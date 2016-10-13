@@ -63,7 +63,6 @@ end
 type SVMModel{T}
     ptr::Ptr{Void}
     param::Vector{SVMParameter}
-
     # Prevent these from being garbage collected
     problem::Vector{SVMProblem}
     nodes::Array{SVMNode}
@@ -356,17 +355,31 @@ function svmpredict{U<:Real,T}(model::SVMModel{T},
 
     (nodes, nodeptrs) = instances2nodes(instances)
     class = Array(T, ninstances)
-    nlabels = length(model.labels)
-    decvalues = Array(Float64, nlabels, ninstances)
-
+    nlabels = nothing
+    decvalues = nothing
     verbosity = model.verbose
+    svm_tp::Int =  model.param[1].svm_type
     fn = model.param[1].probability == 1 ? svm_predict_probability() :
         svm_predict_values()
-    for i = 1:ninstances
-        output = ccall(fn, Float64, (Ptr{Void}, Ptr{SVMNode}, Ptr{Float64}),
-            model.ptr, nodeptrs[i], pointer(decvalues, nlabels*(i-1)+1))
-        class[i] = model.labels[round(Int,output)]
-    end
+     if (svm_tp <= 2)
+        #Classification
+        nlabels = length(model.labels)
+        decvalues = Array(Float64, nlabels, ninstances)
 
+        for i = 1:ninstances
+            output = ccall(fn, Float64, (Ptr{Void}, Ptr{SVMNode}, Ptr{Float64}),
+                model.ptr, nodeptrs[i], pointer(decvalues, nlabels*(i-1)+1))
+            class[i] = model.labels[round(Int,output)]
+        end
+    else
+      #Regression
+      nlabels = length(model.labels)
+      decvalues = Array(Float64, nlabels, ninstances)
+      for i = 1:ninstances
+          output = ccall(fn, Float64, (Ptr{Void}, Ptr{SVMNode}, Ptr{Float64}),
+              model.ptr, nodeptrs[i],pointer(decvalues, nlabels*(i-1)+1))
+          class[i] = output
+      end
+    end
     (class, decvalues)
 end
