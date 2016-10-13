@@ -1,43 +1,38 @@
 type Knn
   k::Int
   x
-  x_norm
   y
+  means_train
+  std_train
+  norm_fx
   Knn() = new(3)
 end
 
-
-function normalize(input_df)
-    n_cols = size(input_df)[2]
-    n_rows = size(input_df)[1]
-    norm_df = deepcopy(input_df)
-    for i in 1:n_cols
-        delta = maximum(input_df[:,i]) - minimum(input_df[:,i])
-        minCol =  minimum(input_df[:,i])
-        for j in 1:n_rows
-            norm_df[j,i] = (norm_df[j,i] - minCol)/delta
-        end
-    end
-
-    norm_df
-end
-
-
 function train!{U<:Real,T}(model::Knn, x::Matrix{U}, y::Vector{T})
   model.x = x
-  model.x_norm = normalize(x)
   model.y = y
+  nRows, nCols = size(x)
+  model.means_train = Vector{Float64}(nCols)
+  model.std_train = Vector{Float64}(nCols)
+  for j in 1:nCols
+      model.means_train[j] = mean(x[:,j])
+      model.std_train[j] = std(x[:,j])
+  end
 end
 
 function predict{U<:Real}(model::Knn,x::Matrix{U})
-    x_norm = normalize(x)
-    println("x_norm",x_norm)
+    nRows, nCols = size(x)
+    x_norm = deepcopy(x)
+    for j in 1:nCols
+      for i in  1:nRows
+         x_norm[i,j] = (x[i,j] - model.means_train[j])/(model.std_train[j])
+      end
+    end
     if (eltype(model.y)<:Real)
        #Regression
-        resp = Float64[size(x,1)]
+        resp = Vector{Float64}(nRows)
         for i in 1:size(x_norm,1)
-          println("predict instance",i)
-          resp[i]= assign_value(model.x_norm, model.y, model.k, x_norm[i,:])
+          resp[i]= assign_value(x_norm, model.y, model.k, x_norm[i,:])
         end
         return resp
     else
@@ -45,11 +40,7 @@ function predict{U<:Real}(model::Knn,x::Matrix{U})
     end
 end
 
-
-
 function euclidean_distance(a, b)
-  println("a:",a)
-  println("b:",b)
  distance = 0.0
  for index in 1:size(a, 1)
   distance += (a[index]-b[index]) * (a[index]-b[index])
@@ -57,26 +48,22 @@ function euclidean_distance(a, b)
  return distance
 end
 
-function get_k_nearest_neighbors(xTrain, imageI, k)
-  println("get_k_nearest_neighbors")
+
+function get_k_nearest_neighbors(xTrain, rowTestItem, k)
    nRows, nCols = size(xTrain)
-   imageJ = Array(Float32, nRows)
-   distances = Array(Float32, nCols)
-   for j in 1:nCols
+   distances = Array(Float32,nRows)
     for index in 1:nRows
-     imageJ[index] = xTrain[index, j]
+     distances[index] = euclidean_distance(xTrain[index,:], rowTestItem)
     end
-    distances[j] = euclidean_distance(imageI, imageJ)
-   end
    sortedNeighbors = sortperm(distances)
    kNearestNeighbors = sortedNeighbors[1:k]
    return kNearestNeighbors
 end
 
-
+# assign_value(model.x_norm, model.y, model.k, x_norm[i,:])
 function assign_value(xTrain, yTrain, k, imageI)
-  println("assign_value")
  kNearestNeighbors = get_k_nearest_neighbors(xTrain, imageI, k)
+
  soma::Float64 = 0
  highestCount = 0
  mostPopularLabel = 0
